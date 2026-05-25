@@ -18,7 +18,17 @@ Use this skill when the user asks to cut a release.
 7. **Preview** — Show the user what will be released (version, changelog, tag)
 8. **Push** — On confirmation: `git push && git push --tags`
 
+## CI/CD Pipeline
+
+Pushing the tag triggers `.github/workflows/publish.yml` which automatically:
+- Publishes the package to **npmjs.com** (requires `NPM_TOKEN` secret)
+- Publishes the package to **GitHub Packages** (uses `GITHUB_TOKEN`)
+- Builds **standalone binaries** for linux-x64, macos-x64, macos-arm64, and win-x64
+
+After pushing, create a **GitHub Release** from the tag to host the binaries as release assets.
+
 ## Notes
 
 - Follow semver: patch for fixes, minor for features, major for breaking changes
 - Do not push until the user confirms
+- Ensure `NPM_TOKEN` is set in repository secrets before releasing
