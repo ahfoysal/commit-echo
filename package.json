@@ -28,6 +28,14 @@
     "ai"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/404-PF/commit-echo.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "dependencies": {
     "@clack/prompts": "^0.9.1",
     "commander": "^13.1.0",

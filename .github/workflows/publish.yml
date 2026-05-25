@@ -1,0 +1,80 @@
+name: Publish
+
+on:
+  release:
+    types: [published]
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish-npm:
+    name: Publish to npmjs.com
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm run build
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-github:
+    name: Publish to GitHub Packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://npm.pkg.github.com
+      - run: npm ci
+      - run: npm run build
+      - run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  binaries:
+    name: Build binary for ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - label: linux-x64
+            os: ubuntu-latest
+            pkg-target: node24-linux-x64
+          - label: macos-x64
+            os: macos-latest
+            pkg-target: node24-macos-x64
+          - label: macos-arm64
+            os: macos-latest
+            pkg-target: node24-macos-arm64
+          - label: win-x64
+            os: windows-latest
+            pkg-target: node24-win-x64
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: npm run build
+      - run: npx @yao-pkg/pkg@latest dist/index.js --targets ${{ matrix.pkg-target }} --output commit-echo-${{ matrix.label }}${{ matrix.label == 'win-x64' && '.exe' || '' }}
+        shell: bash
+      - name: Upload binaries to release
+        uses: softprops/action-gh-release@v2
+        if: github.event_name == 'release'
+        with:
+          files: commit-echo-${{ matrix.label }}*
