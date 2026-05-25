@@ -1,0 +1,26 @@
+---
+name: create-issue
+description: Use this skill when asked to create a GitHub issue. Provides a structured workflow for gathering issue details and creating issues via the gh CLI.
+---
+
+# Create Issue
+
+Use this skill when the user asks to create a GitHub issue.
+
+## Workflow
+
+1. If not already provided, diagnose the codebase to infer a sensible title, body (description), labels, and issue type (Bug, Feature, Task). Propose the generated values to the user
+2. Confirm the details before creating
+3. Use `gh issue create` with the gathered information and return the issue URL
+
+## Command
+
+```bash
+gh issue create --title "<title>" --body "<body>" --label "<labels>" --type "<issue_type>"
+```
+
+## Notes
+
+- If no repo is specified, assume the current one
+- Labels should be comma-separated if multiple
+- Return the issue URL after creation
