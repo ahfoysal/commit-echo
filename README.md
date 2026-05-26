@@ -12,7 +12,7 @@ LLM-powered CLI that learns your Git commit style and auto-suggests personalized
 ## Installation
 
 ```bash
-npm install -g commit-echo
+npm install -g @404-pf/commit-echo
 ```
 
 ## Usage
