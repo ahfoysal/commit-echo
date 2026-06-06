@@ -64,13 +64,18 @@ program
   .option('-y, --yes', 'Automatically select the first suggestion and skip prompts')
   .option('-v, --verbose', 'Print diagnostic information about the suggestion request')
   .option('-m, --model <model>', 'Override the configured LLM model for this invocation')
+  .option('--stream', 'Stream suggestions as they are generated (progressive output)')
   .option('--auto', 'Alias for --yes')
   .action(async (options) => {
+    const globalOpts = program.opts<{ yes?: boolean; auto?: boolean }>();
     await suggestCommand({
       commit: options.commit,
-      autoCommit: Boolean(options.yes || options.auto),
+      autoCommit: Boolean(
+        options.yes || options.auto || globalOpts.yes || globalOpts.auto,
+      ),
       verbose: Boolean(options.verbose),
       model: options.model,
+      stream: Boolean(options.stream),
     });
   });
 

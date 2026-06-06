@@ -1,11 +1,12 @@
 import type {
   Config,
+  Provider,
   Suggestion,
   StyleProfile,
   TruncationInfo,
 } from "../types.js";
 import { getProviderInfo } from "../providers/index.js";
-import { complete } from "../providers/index.js";
+import { complete, completeStream } from "../providers/index.js";
 import {
   resolveSystemPrompt,
   resolveUserPrompt,
@@ -109,6 +110,75 @@ export async function generateSuggestions(
     model: result.model,
     truncation: truncation.wasTruncated ? truncation : undefined,
   };
+}
+
+export type SuggestionStreamEvent =
+  | { kind: "meta"; truncation?: TruncationInfo }
+  | { kind: "model"; model: string }
+  | { kind: "text"; text: string };
+
+/**
+ * Stream commit suggestions from the LLM provider.
+ * Yields a meta event first (including truncation info), then text chunks.
+ * After iteration completes, the caller can parse accumulated text with
+ * `parseSuggestions()`.
+ */
+export async function* generateSuggestionsStream(
+  config: Config,
+  diff: string,
+  profileParam?: StyleProfile,
+  apiKeyParam?: string,
+  provider?: Provider,
+): AsyncGenerator<SuggestionStreamEvent> {
+  const profile = profileParam ?? (await buildProfile(config.historySize));
+
+  const { diff: truncatedDiff, info: truncation } = truncateDiff(
+    diff,
+    config.maxDiffSize,
+  );
+
+  const branch = getBranchName();
+  const profileStr = formatProfile(profile);
+
+  const vars = {
+    diff: truncatedDiff,
+    profile: profileStr,
+    branch,
+  };
+
+  const systemPrompt = resolveSystemPrompt(profile, vars, config);
+  const userPrompt = resolveUserPrompt(vars, config);
+
+  const apiKey = apiKeyParam ?? assertApiKeyAvailable(config);
+
+  yield {
+    kind: "meta",
+    truncation: truncation.wasTruncated ? truncation : undefined,
+  };
+
+  const stream = completeStream(
+    config.provider,
+    config.baseUrl,
+    {
+      model: config.model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.7,
+      maxTokens: 1024,
+      apiKey,
+    },
+    provider,
+  );
+
+  for await (const chunk of stream) {
+    if (chunk.kind === "model") {
+      yield { kind: "model", model: chunk.model };
+      continue;
+    }
+    yield { kind: "text", text: chunk.text };
+  }
 }
 
 export async function testConnection(config: Config): Promise<string> {

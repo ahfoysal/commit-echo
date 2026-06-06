@@ -185,6 +185,15 @@ Suggestions generated:
   3. chore: refresh package metadata
 ```
 
+### Stream suggestions as they are generated
+
+Use `--stream` to print LLM output incrementally instead of waiting behind a spinner. Supported for OpenAI-compatible and Anthropic providers; use non-streaming mode for Cohere. Pair with `--yes` for a non-interactive workflow that streams output and auto-commits the first suggestion.
+
+```bash
+commit-echo suggest --stream
+commit-echo suggest --stream --yes
+```
+
 ### Inspect suggestion diagnostics with `--verbose`
 
 Use verbose mode when you want to confirm which model handled the request, how much commit history was folded into the style profile, or whether the diff had to be truncated before sending it to the provider.

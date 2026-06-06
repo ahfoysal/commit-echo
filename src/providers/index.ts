@@ -1,4 +1,4 @@
-import type { Provider, ChatParams, ChatResult } from '../types.js';
+import type { Provider, ChatParams, ChatResult, ProviderStreamChunk } from '../types.js';
 import { OpenAICompatibleProvider } from './openai-compatible.js';
 import { AnthropicProvider } from './anthropic.js';
 import { CohereProvider } from './cohere.js';
@@ -39,6 +39,16 @@ export function createProvider(configProvider: string): Provider {
   return new OpenAICompatibleProvider();
 }
 
+export function getStreamingProvider(configProvider: string): Provider {
+  const provider = createProvider(configProvider);
+  if (!provider.completeStream) {
+    throw new Error(
+      `Streaming is not supported for the '${configProvider}' provider. Use non-streaming mode.`,
+    );
+  }
+  return provider;
+}
+
 export async function complete(
   configProvider: string,
   baseUrlOverride: string | undefined,
@@ -47,6 +57,17 @@ export async function complete(
   const provider = createProvider(configProvider);
   const baseUrl = getBaseUrl(configProvider, baseUrlOverride);
   return provider.complete({ ...params, baseUrl });
+}
+
+export async function* completeStream(
+  configProvider: string,
+  baseUrlOverride: string | undefined,
+  params: Omit<ChatParams, 'baseUrl'>,
+  provider?: Provider,
+): AsyncIterable<ProviderStreamChunk> {
+  const resolvedProvider = provider ?? getStreamingProvider(configProvider);
+  const baseUrl = getBaseUrl(configProvider, baseUrlOverride);
+  yield* resolvedProvider.completeStream!({ ...params, baseUrl });
 }
 
 export async function fetchModels(

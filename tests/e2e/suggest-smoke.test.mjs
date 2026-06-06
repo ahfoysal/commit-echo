@@ -281,3 +281,329 @@ test('suggest --model overrides configured model for one invocation and -m is an
   await runSuggestUntil(['suggest', '-m', 'claude-3-5-sonnet'], { cwd: repo, env, text: 'Suggestions generated:' });
   assert.equal(requests.at(-1).model, 'claude-3-5-sonnet');
 });
+
+test('suggest --stream prints incremental SSE output', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'commit-echo-e2e-stream-'));
+  const { home, repo, configDir } = await setupRepo(root);
+
+  const requests = [];
+  const server = createServer(async (req, res) => {
+    if (req.url === '/chat/completions' && req.method === 'POST') {
+      let body = '';
+      req.setEncoding('utf8');
+      for await (const chunk of req) body += chunk;
+      const parsed = JSON.parse(body);
+      requests.push(parsed);
+
+      if (parsed.stream) {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.write('data: {"choices":[{"delta":{"content":"1. feat: streamed suggestion"}}]}\n\n');
+        res.write('data: [DONE]\n\n');
+        res.end();
+        return;
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        model: parsed.model,
+        choices: [{ message: { content: '1. feat: fallback suggestion' } }],
+      }));
+      return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+  const port = await listen(server);
+  t.after(async () => {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  await writeFile(
+    join(configDir, 'config.json'),
+    JSON.stringify({
+      provider: '__custom__',
+      model: 'fixture-model',
+      baseUrl: `http://127.0.0.1:${port}`,
+      apiKey: 'test-key',
+      historySize: 5,
+    }, null, 2),
+    'utf8'
+  );
+
+  const { stdout } = await runSuggestUntil(
+    ['suggest', '--stream'],
+    {
+      cwd: repo,
+      env: {
+        ...process.env,
+        HOME: home,
+        XDG_CONFIG_HOME: join(home, '.config'),
+        APPDATA: join(home, 'AppData', 'Roaming'),
+        FORCE_COLOR: '0',
+      },
+      text: 'feat: streamed suggestion',
+    },
+  );
+
+  assert.match(stdout, /Streaming suggestions/);
+  assert.match(stdout, /feat: streamed suggestion/);
+  assert.equal(requests.at(-1)?.stream, true);
+  assert.equal(
+    (stdout.match(/feat: streamed suggestion/g) ?? []).length,
+    1,
+    'streamed suggestion text should not be printed twice',
+  );
+});
+
+test('suggest --stream prints incremental Anthropic SSE output', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'commit-echo-e2e-stream-anthropic-'));
+  const { home, repo, configDir } = await setupRepo(root);
+
+  const requests = [];
+  const server = createServer(async (req, res) => {
+    if (req.url === '/v1/messages' && req.method === 'POST') {
+      let body = '';
+      req.setEncoding('utf8');
+      for await (const chunk of req) body += chunk;
+      const parsed = JSON.parse(body);
+      requests.push(parsed);
+
+      if (parsed.stream) {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.write('event: content_block_delta\n');
+        res.write('data: {"delta":{"text":"1. feat: anthropic streamed suggestion"}}\n\n');
+        res.write('event: message_stop\n');
+        res.write('data: {}\n\n');
+        res.end();
+        return;
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        model: parsed.model,
+        content: [{ type: 'text', text: '1. feat: anthropic fallback suggestion' }],
+      }));
+      return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+  const port = await listen(server);
+  t.after(async () => {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  await writeFile(
+    join(configDir, 'config.json'),
+    JSON.stringify({
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-20250514',
+      baseUrl: `http://127.0.0.1:${port}/v1`,
+      apiKey: 'test-key',
+      historySize: 5,
+    }, null, 2),
+    'utf8'
+  );
+
+  const { stdout } = await runSuggestUntil(
+    ['suggest', '--stream'],
+    {
+      cwd: repo,
+      env: {
+        ...process.env,
+        HOME: home,
+        XDG_CONFIG_HOME: join(home, '.config'),
+        APPDATA: join(home, 'AppData', 'Roaming'),
+        FORCE_COLOR: '0',
+      },
+      text: 'feat: anthropic streamed suggestion',
+    },
+  );
+
+  assert.match(stdout, /Streaming suggestions/);
+  assert.match(stdout, /feat: anthropic streamed suggestion/);
+  assert.equal(requests.at(-1)?.stream, true);
+});
+
+test('suggest --stream --yes streams output and auto-commits the first suggestion', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'commit-echo-e2e-stream-yes-'));
+  const { home, repo, configDir } = await setupRepo(root);
+
+  const requests = [];
+  const server = createServer(async (req, res) => {
+    if (req.url === '/chat/completions' && req.method === 'POST') {
+      let body = '';
+      req.setEncoding('utf8');
+      for await (const chunk of req) body += chunk;
+      const parsed = JSON.parse(body);
+      requests.push(parsed);
+
+      if (parsed.stream) {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.write('data: {"choices":[{"delta":{"content":"1. feat: stream auto commit"}}]}\n\n');
+        res.write('data: [DONE]\n\n');
+        res.end();
+        return;
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        model: parsed.model,
+        choices: [{ message: { content: '1. feat: fallback suggestion' } }],
+      }));
+      return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+  const port = await listen(server);
+  t.after(async () => {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  await writeFile(
+    join(configDir, 'config.json'),
+    JSON.stringify({
+      provider: '__custom__',
+      model: 'fixture-model',
+      baseUrl: `http://127.0.0.1:${port}`,
+      apiKey: 'test-key',
+      historySize: 5,
+    }, null, 2),
+    'utf8'
+  );
+
+  const child = spawn(process.execPath, [join(process.cwd(), 'dist/index.js'), 'suggest', '--stream', '--yes'], {
+    cwd: repo,
+    env: {
+      ...process.env,
+      HOME: home,
+      XDG_CONFIG_HOME: join(home, '.config'),
+      APPDATA: join(home, 'AppData', 'Roaming'),
+      FORCE_COLOR: '0',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  let stdout = '';
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk.toString();
+  });
+
+  const result = await onceExit(child);
+  assert.equal(result.code, 0);
+  assert.match(stdout, /Streaming suggestions/);
+  assert.match(stdout, /feat: stream auto commit/);
+  assert.match(stdout, /Selected:/);
+  assert.doesNotMatch(stdout, /Choose an action/);
+  assert.equal(requests.at(-1)?.stream, true);
+});
+
+test('suggest --stream fails fast for unsupported providers', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'commit-echo-e2e-stream-cohere-'));
+  const { home, repo, configDir } = await setupRepo(root);
+
+  await writeFile(
+    join(configDir, 'config.json'),
+    JSON.stringify({
+      provider: 'cohere',
+      model: 'command-r',
+      apiKey: 'test-key',
+      historySize: 5,
+    }, null, 2),
+    'utf8'
+  );
+
+  t.after(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  const child = spawn(process.execPath, [join(process.cwd(), 'dist/index.js'), 'suggest', '--stream'], {
+    cwd: repo,
+    env: {
+      ...process.env,
+      HOME: home,
+      XDG_CONFIG_HOME: join(home, '.config'),
+      APPDATA: join(home, 'AppData', 'Roaming'),
+      FORCE_COLOR: '0',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  let stdout = '';
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk.toString();
+  });
+
+  const result = await onceExit(child);
+  assert.equal(result.code, 0);
+  assert.match(stdout, /Streaming is not supported for the 'cohere' provider/);
+  assert.doesNotMatch(stdout, /Streaming suggestions/);
+});
+
+test('suggest --stream reports parse failure for unparseable streamed output', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'commit-echo-e2e-stream-parse-'));
+  const { home, repo, configDir } = await setupRepo(root);
+
+  const server = createServer(async (req, res) => {
+    if (req.url === '/chat/completions' && req.method === 'POST') {
+      let body = '';
+      req.setEncoding('utf8');
+      for await (const chunk of req) body += chunk;
+
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write('data: {"choices":[{"delta":{"content":"not a numbered suggestion list"}}]}\n\n');
+      res.write('data: [DONE]\n\n');
+      res.end();
+      return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+  const port = await listen(server);
+  t.after(async () => {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  await writeFile(
+    join(configDir, 'config.json'),
+    JSON.stringify({
+      provider: '__custom__',
+      model: 'fixture-model',
+      baseUrl: `http://127.0.0.1:${port}`,
+      apiKey: 'test-key',
+      historySize: 5,
+    }, null, 2),
+    'utf8'
+  );
+
+  const child = spawn(process.execPath, [join(process.cwd(), 'dist/index.js'), 'suggest', '--stream'], {
+    cwd: repo,
+    env: {
+      ...process.env,
+      HOME: home,
+      XDG_CONFIG_HOME: join(home, '.config'),
+      APPDATA: join(home, 'AppData', 'Roaming'),
+      FORCE_COLOR: '0',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  let stdout = '';
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk.toString();
+  });
+
+  const result = await onceExit(child);
+  assert.equal(result.code, 0);
+  assert.match(stdout, /not a numbered suggestion list/);
+  assert.match(stdout, /Could not parse any suggestions from LLM response/);
+});
