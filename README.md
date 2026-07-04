@@ -59,6 +59,23 @@ commit-echo history
 
 Note: The non-interactive flags `--yes`, `-y`, and `--auto` expect staged changes (run `git add`). If no staged changes are found when auto-committing is requested, the command will print an error and exit with a non-zero status.
 
+### `suggest` Options
+
+| Flag | Default | Description |
+|---|---|---|
+| `--commit` | `false` | Commit the selected suggestion instead of just displaying it |
+| `-y, --yes` | `false` | Automatically select the first suggestion and skip prompts |
+| `--auto` | `false` | Alias for `--yes` |
+| `-v, --verbose` | `false` | Print diagnostic information (model, style profile stats, truncation) |
+| `-d, --show-diff` | `false` | Print the diff content that will be sent to the LLM |
+| `-m, --model <model>` | — | Override the configured LLM model for this invocation |
+| `--max-diff-size <n>` | — | Override the configured maximum diff size for this invocation |
+| `--stream` | `false` | Stream suggestions as they are generated (progressive output) |
+| `-n, --dry-run` | `false` | Show the LLM input without generating suggestions |
+| `--no-commit` | — | Deprecated alias; `suggest` already skips committing unless `--commit` is passed |
+
+> **Note:** The `--stream` flag is supported for OpenAI-compatible and Anthropic providers. Cohere does not support streaming.
+
 ## Requirements
 
 - Node.js >= 24.0.0
