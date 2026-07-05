@@ -50,7 +50,10 @@ const SUBCOMMANDS: readonly Subcommand[] = [
   {
     name: 'config',
     description: 'View current configuration',
-    options: [{ flag: '--help', description: 'Display help for config' }],
+    options: [
+      { flag: '--json', description: 'Output the configuration as JSON' },
+      { flag: '--help', description: 'Display help for config' },
+    ],
   },
   {
     name: 'suggest',
@@ -82,6 +85,7 @@ const SUBCOMMANDS: readonly Subcommand[] = [
     description: 'Process multiple git repositories in batch mode',
     options: [
       { flag: '--recursive', short: '-r', description: 'Recursively search subdirectories for git repos' },
+      { flag: '--verbose', short: '-v', description: 'Print diagnostic information about the suggestion request' },
       { flag: '--yes', short: '-y', description: 'Automatically accept the first suggestion and commit without prompts' },
       { flag: '--auto', description: 'Alias for --yes' },
       { flag: '--help', description: 'Display help for batch' },
