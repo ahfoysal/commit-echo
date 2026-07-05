@@ -83,11 +83,7 @@ function parseConfigSetValue<K extends ConfigSetKey>(key: K, rawValue: string): 
   return value as ConfigSetValueMap[K];
 }
 
-function updateConfigField<K extends ConfigSetKey>(
-  config: Config,
-  key: K,
-  value: ConfigSetValueMap[K],
-): Config {
+function updateConfigField<K extends ConfigSetKey>(config: Config, key: K, value: ConfigSetValueMap[K]): Config {
   return {
     ...config,
     [key]: value,
@@ -100,7 +96,7 @@ export function maskApiKey(apiKey: string | undefined): string {
     return 'not stored in config';
   }
 
-  const visibleLength = Math.min(4, Math.max(2, apiKey.length));
+  const visibleLength = Math.min(4, Math.floor(apiKey.length / 2));
   return `${apiKey.slice(0, visibleLength)}••••`;
 }
 
