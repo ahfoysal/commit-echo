@@ -139,6 +139,7 @@ async function setupRepo(root) {
   await mkdir(repo, { recursive: true });
 
   execFileSync('git', ['init'], { cwd: repo });
+  execFileSync('git', ['config', 'core.autocrlf', 'false'], { cwd: repo });
   execFileSync('git', ['config', 'core.fsmonitor', 'false'], { cwd: repo });
   execFileSync('git', ['config', 'user.name', 'E2E Tester'], { cwd: repo });
   execFileSync('git', ['config', 'user.email', 'e2e@example.com'], { cwd: repo });

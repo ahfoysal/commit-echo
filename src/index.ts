@@ -19,7 +19,7 @@ let pkg: { version?: string; description?: string };
 try {
   pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8'));
 } catch {
-  pkg = { version: '0.1.0', description: '' };
+  pkg = { version: '0.2.0', description: '' };
 }
 
 const program = new Command();
@@ -30,7 +30,7 @@ program
 
 program
   .name('commit-echo')
-  .version(pkg.version ?? '0.1.0')
+  .version(pkg.version ?? '0.2.0')
   .description(pkg.description ?? 'LLM-powered Git commit message assistant')
   .addHelpText(
     'after',
