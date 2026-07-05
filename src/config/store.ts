@@ -4,8 +4,8 @@ import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 import type { Config } from '../types.js';
 
-const DEFAULT_HISTORY_SIZE = 50;
-const DEFAULT_MAX_DIFF_SIZE = 4000;
+export const DEFAULT_HISTORY_SIZE = 50;
+export const DEFAULT_MAX_DIFF_SIZE = 4000;
 
 /** Environment variable names for configuration overrides. Keep in sync with `loadConfig()`. */
 export const CONFIG_ENV_VARS = [
@@ -71,13 +71,12 @@ export function getHistoryPath(): string {
   return join(getConfigDir(), 'history.jsonl');
 }
 
-export async function loadConfig(): Promise<Config> {
+async function readConfigFile(): Promise<Partial<Config>> {
   const configPath = getConfigPath();
   const raw = await readFile(configPath, 'utf-8');
-  let parsed: Partial<Config> = {};
 
   try {
-    parsed = JSON.parse(raw) as Partial<Config>;
+    return JSON.parse(raw) as Partial<Config>;
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new Error(
@@ -87,6 +86,31 @@ export async function loadConfig(): Promise<Config> {
     }
     throw error;
   }
+}
+
+function normalizeRawConfig(parsed: Partial<Config>, configPath: string): Partial<Config> {
+  return {
+    ...parsed,
+    historySize:
+      parsed.historySize === undefined
+        ? undefined
+        : readPositiveIntegerConfigValue(parsed.historySize, 'historySize', DEFAULT_HISTORY_SIZE, configPath),
+    maxDiffSize:
+      parsed.maxDiffSize === undefined
+        ? undefined
+        : readPositiveIntegerConfigValue(parsed.maxDiffSize, 'maxDiffSize', DEFAULT_MAX_DIFF_SIZE, configPath),
+  };
+}
+
+export async function loadRawConfig(): Promise<Partial<Config>> {
+  const configPath = getConfigPath();
+  const parsed = await readConfigFile();
+  return normalizeRawConfig(parsed, configPath);
+}
+
+export async function loadConfig(): Promise<Config> {
+  const configPath = getConfigPath();
+  const parsed = normalizeRawConfig(await readConfigFile(), configPath);
 
   // Resolve numeric config values with env var overrides.
   // Env vars take precedence over config file values.

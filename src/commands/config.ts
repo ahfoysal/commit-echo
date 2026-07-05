@@ -1,6 +1,13 @@
 import { intro, outro } from '@clack/prompts';
 import pc from 'picocolors';
-import { configExists, loadConfig } from '../config/store.js';
+import {
+  configExists,
+  DEFAULT_HISTORY_SIZE,
+  DEFAULT_MAX_DIFF_SIZE,
+  loadConfig,
+  loadRawConfig,
+  saveConfig,
+} from '../config/store.js';
 import { getProviderInfo } from '../providers/index.js';
 import type { Config } from '../types.js';
 
@@ -18,6 +25,74 @@ type ConfigJsonOutput = {
   maxDiffSize: number;
   apiKey: string;
 };
+
+const CONFIG_SET_KEYS = [
+  'provider',
+  'model',
+  'baseUrl',
+  'apiKey',
+  'historySize',
+  'maxDiffSize',
+  'systemPromptTemplate',
+  'userPromptTemplate',
+] as const;
+
+type ConfigSetKey = (typeof CONFIG_SET_KEYS)[number];
+type ConfigSetValueMap = Pick<Config, ConfigSetKey>;
+
+const NUMERIC_CONFIG_KEYS = new Set<ConfigSetKey>(['historySize', 'maxDiffSize']);
+
+function isConfigSetKey(key: string): key is ConfigSetKey {
+  return CONFIG_SET_KEYS.includes(key as ConfigSetKey);
+}
+
+function normalizeBaseUrl(value: string): string {
+  return value.replace(/\/+$/, '');
+}
+
+function parseConfigSetValue<K extends ConfigSetKey>(key: K, rawValue: string): ConfigSetValueMap[K] {
+  if (key === 'provider') {
+    if (rawValue !== CUSTOM_PROVIDER_KEY && !getProviderInfo(rawValue)) {
+      throw new Error(`Unknown provider: ${rawValue}.`);
+    }
+    return rawValue as ConfigSetValueMap[K];
+  }
+
+  if (key === 'baseUrl') {
+    if (!rawValue) {
+      return undefined as ConfigSetValueMap[K];
+    }
+
+    try {
+      const url = new URL(rawValue);
+      return normalizeBaseUrl(url.toString()) as ConfigSetValueMap[K];
+    } catch {
+      throw new Error('baseUrl must be a valid URL.');
+    }
+  }
+
+  if (!NUMERIC_CONFIG_KEYS.has(key)) {
+    return rawValue as ConfigSetValueMap[K];
+  }
+
+  const value = Number(rawValue);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`${key} must be a positive integer.`);
+  }
+
+  return value as ConfigSetValueMap[K];
+}
+
+function updateConfigField<K extends ConfigSetKey>(
+  config: Config,
+  key: K,
+  value: ConfigSetValueMap[K],
+): Config {
+  return {
+    ...config,
+    [key]: value,
+  };
+}
 
 /** Masks a stored API key while leaving enough prefix to identify which key is configured. */
 export function maskApiKey(apiKey: string | undefined): string {
@@ -86,4 +161,45 @@ export async function configCommand(options: ConfigCommandOptions = {}): Promise
   console.log();
 
   outro('Configuration loaded.');
+}
+
+/** Updates one persisted configuration value. */
+export async function configSetCommand(key: string, value: string): Promise<void> {
+  if (!configExists()) {
+    intro(pc.bold(pc.cyan('commit-echo config')));
+    outro(pc.yellow('No configuration found. Run `commit-echo init` first.'));
+    process.exit(1);
+  }
+
+  if (!isConfigSetKey(key)) {
+    intro(pc.bold(pc.cyan('commit-echo config')));
+    outro(pc.red(`Unknown config key: ${key}. Valid keys: ${CONFIG_SET_KEYS.join(', ')}`));
+    process.exit(1);
+  }
+
+  let parsedValue: ConfigSetValueMap[ConfigSetKey];
+  try {
+    parsedValue = parseConfigSetValue(key, value);
+  } catch (error) {
+    intro(pc.bold(pc.cyan('commit-echo config')));
+    outro(pc.red(error instanceof Error ? error.message : String(error)));
+    process.exit(1);
+  }
+
+  const config = await loadRawConfig();
+  const nextConfig: Config = {
+    provider: config.provider ?? '',
+    model: config.model ?? '',
+    baseUrl: config.baseUrl,
+    apiKey: config.apiKey,
+    historySize: config.historySize ?? DEFAULT_HISTORY_SIZE,
+    maxDiffSize: config.maxDiffSize ?? DEFAULT_MAX_DIFF_SIZE,
+    systemPromptTemplate: config.systemPromptTemplate,
+    userPromptTemplate: config.userPromptTemplate,
+  };
+
+  await saveConfig(updateConfigField(nextConfig, key, parsedValue));
+
+  intro(pc.bold(pc.cyan('commit-echo config')));
+  outro(`Updated ${pc.cyan(key)}.`);
 }
