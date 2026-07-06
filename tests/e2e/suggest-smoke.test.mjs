@@ -617,6 +617,22 @@ test('suggest --max-diff-size overrides configured diff limit for one invocation
   assert.equal(extractPromptDiff(requests.at(-1).messages[1].content), extractShownDiff(stdout));
 });
 
+test('suggest rejects a non-positive --max-diff-size before calling the provider', async (t) => {
+  const { home, repo, requests } = await setupShowDiffFixture(t, {
+    rootPrefix: 'commit-echo-invalid-max-diff-size-',
+    content: '1. feat: should not reach provider',
+  });
+
+  const result = await runCli(['suggest', '--yes', '--max-diff-size', '0'], {
+    cwd: repo,
+    env: cliEnvFor(home),
+  });
+
+  assert.equal(result.code, 0);
+  assert.equal(requests.length, 0);
+  assert.match(stripAnsi(result.stdout), /Invalid --max-diff-size value\. Expected a positive integer\./);
+});
+
 test('suggest --show-diff works with unstaged changes in auto mode', async (t) => {
   const { home, repo, requests } = await setupShowDiffFixture(t, {
     rootPrefix: 'commit-echo-show-diff-unstaged-',
