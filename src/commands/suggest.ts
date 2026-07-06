@@ -109,6 +109,7 @@ export async function suggestCommand(
   intro(pc.bold(pc.cyan('commit-echo')));
 
   const shouldCommit = options.commit === true;
+  const isInteractiveOutput = Boolean(process.stdin.isTTY && process.stdout.isTTY);
 
   if (options.noCommit) {
     console.warn(pc.yellow("Note: --no-commit is deprecated; 'commit-echo suggest' already skips committing."));
@@ -162,6 +163,11 @@ export async function suggestCommand(
       }
 
       if (!options.autoCommit) {
+        if (!isInteractiveOutput) {
+          outro(pc.yellow('Cancelled. Stage changes with `git add` and try again.'));
+          return;
+        }
+
         let useUnstaged: boolean | symbol;
         try {
           useUnstaged = await confirm({
@@ -301,17 +307,29 @@ export async function suggestCommand(
         return;
       }
     } else {
-      const genSpinner = spinner();
-      genSpinner.start('Generating commit suggestions...');
+      const genSpinner = isInteractiveOutput ? spinner() : null;
+      if (genSpinner) {
+        genSpinner.start('Generating commit suggestions...');
+      } else {
+        console.log('Generating commit suggestions...');
+      }
 
       try {
         const result = await generateSuggestions(config, analysisDiff, profile, apiKey, analysisTruncation);
         suggestions = result.suggestions;
         generatedTruncation = result.truncation;
         model = result.model;
-        genSpinner.stop(pc.green('Suggestions generated:'));
+        if (genSpinner) {
+          genSpinner.stop(pc.green('Suggestions generated:'));
+        } else {
+          console.log('Suggestions generated:');
+        }
       } catch (err) {
-        genSpinner.stop(pc.red('Failed to generate suggestions.'));
+        if (genSpinner) {
+          genSpinner.stop(pc.red('Failed to generate suggestions.'));
+        } else {
+          console.log('Failed to generate suggestions.');
+        }
         const message = err instanceof Error ? err.message : 'Unknown error';
         outro(pc.red(message));
         return;
